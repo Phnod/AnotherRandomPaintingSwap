@@ -45,7 +45,7 @@ public class Plugin : BaseUnityPlugin
     public static readonly HashSet<string> whitelistSquareMaterials = new HashSet<string>
     {
         "Painting_S_Creep",
-        "Painting_S_Creep 2_0", // These paintings are stretched a little bit, about 1.1x taller than wide
+        "Painting_S_Creep 2_0", // These paintings are sometimes stretched a little bit, about 1.1x taller than wide
         "Painting_S_Creep 2",
         "Painting Wizard Class",
     };
@@ -64,25 +64,43 @@ public class Plugin : BaseUnityPlugin
         "Painting_S_Tree",
     };
 
+    public class CustomPainting
+    {
+        public Material material;
+        public string   textureName = "UNASSIGNED STRING";
+    }
+
+    public class ReplaceablePainting
+    {
+        public MeshRenderer meshRenderer;
+    }
+
     // Defines groups of paintings depending on their dimensions, allowing to split landscape and portraits
     public class PaintingGroup
     {
-        public string paintingType;
-        public string paintingFolderName;
-        public HashSet<string> whitelistMaterials;
-        public List<Material>  loadedMaterials;
-        public List<string>    loadedTextureNames;
-        public Material        baseMaterial = null;
+        public string                    paintingType; // Dimension group (Landscape, Portrait)
+        public string                    paintingFolderName; // The folder to search for this kind of painting
+        public HashSet<string>           whitelistMaterials; // Which materials to replace
+        public List<CustomPainting>      customPaintings; // Complete list of paintings
+        public List<CustomPainting>      unusedPaintings; // Paintings that haven't been used yet
+        public Material                  baseMaterial = null;
 
-        public PaintingGroup(string InPaintingType, string InPaintingFolderName, HashSet<string> InWhitelistMaterials)
+        public PaintingGroup(string InPaintingType,
+                             string InPaintingFolderName,
+                             HashSet<string> InWhitelistMaterials)
         {
-            paintingType       = InPaintingType;
-            paintingFolderName = InPaintingFolderName;
-            whitelistMaterials = InWhitelistMaterials;
-            loadedMaterials    = new List<Material>();
-            loadedTextureNames = new List<string>();
+            paintingType         = InPaintingType;
+            paintingFolderName   = InPaintingFolderName;
+            whitelistMaterials   = InWhitelistMaterials;
+            customPaintings      = new List<CustomPainting>();
+            unusedPaintings      = new List<CustomPainting>();
         }
     }
+
+    // Found paintings that will be replaced with custom ones
+    internal static List<ReplaceablePainting> replaceablePaintings = new List<ReplaceablePainting>();
+
+    internal static int pseudorandomSeed = 0;
 
     public static List<PaintingGroup> paintingGroups;
 
@@ -104,7 +122,8 @@ public class Plugin : BaseUnityPlugin
     {
         "*.png",
         "*.jpg",
-        "*.jpeg"
+        "*.jpeg",
+        "*.psd",
     };
 
     private readonly Harmony harmony = new Harmony("phnod.anotherrandompaintingswap");
@@ -124,12 +143,48 @@ public class Plugin : BaseUnityPlugin
         harmony.PatchAll(Assembly.GetExecutingAssembly());
         DebugLog($"DebugLog enabled. Expect bad loading performance");
 
-        if (PluginConfig.Grunge.enableGrunge.Value)
-        {
-            AssignMaterialGroups();
-        }
+        AssignMaterialGroups();
 
         LoadImagesFromAllPlugins();
+    }
+
+    // Get config values for the material
+    private static void UpdateMaterialParameters()
+    {
+        foreach (var paintingGroup in paintingGroups)
+        {
+            var paintingType = paintingGroup.paintingType;
+            if (paintingType == "Portrait")
+            {
+                paintingGroup.baseMaterial = _PortraitMaterial;
+            }
+            else // Square paintings can use the same material as landscape paintings
+            {
+                paintingGroup.baseMaterial = _LandscapeMaterial;
+            }
+
+            if (paintingGroup.baseMaterial == null)
+            {
+                Logger.LogWarning($"No base material found for [{paintingType}]!");
+                continue;
+            }
+
+            if (PluginConfig.Grunge.enableGrunge.Value)
+            {
+                paintingGroup.baseMaterial.SetColor(PluginConfig.Grunge._BaseColor.Definition.Key   , PluginConfig.Grunge._BaseColor.Value);
+                paintingGroup.baseMaterial.SetColor(PluginConfig.Grunge._MainColor.Definition.Key   , PluginConfig.Grunge._MainColor.Value);
+                paintingGroup.baseMaterial.SetColor(PluginConfig.Grunge._CracksColor.Definition.Key , PluginConfig.Grunge._CracksColor.Value);
+                paintingGroup.baseMaterial.SetColor(PluginConfig.Grunge._OutlineColor.Definition.Key, PluginConfig.Grunge._OutlineColor.Value);
+                paintingGroup.baseMaterial.SetFloat(PluginConfig.Grunge._CracksPower.Definition.Key , PluginConfig.Grunge._CracksPower.Value);
+            }
+            else
+            {
+                paintingGroup.baseMaterial.SetColor(PluginConfig.Grunge._BaseColor.Definition.Key   , Color.clear);
+                paintingGroup.baseMaterial.SetColor(PluginConfig.Grunge._MainColor.Definition.Key   , Color.clear);
+                paintingGroup.baseMaterial.SetColor(PluginConfig.Grunge._CracksColor.Definition.Key , Color.clear);
+                paintingGroup.baseMaterial.SetColor(PluginConfig.Grunge._OutlineColor.Definition.Key, Color.clear);
+            }
+        }
     }
 
     private void AssignMaterialGroups()
@@ -171,30 +226,7 @@ public class Plugin : BaseUnityPlugin
             }
         }
 
-        foreach (var paintingGroup in paintingGroups)
-        {
-            var paintingType = paintingGroup.paintingType;
-            if (paintingType == "Portrait")
-            {
-                paintingGroup.baseMaterial = _PortraitMaterial;
-            }
-            else // Square paintings can use the same material as landscape paintings
-            {
-                paintingGroup.baseMaterial = _LandscapeMaterial;
-            }
-
-            if (paintingGroup.baseMaterial == null)
-            {
-                Logger.LogWarning($"No base material found for [{paintingType}]!");
-                continue; 
-            }
-
-            paintingGroup.baseMaterial.SetColor(PluginConfig.Grunge._BaseColor.Definition.Key, PluginConfig.Grunge._BaseColor.Value);
-            paintingGroup.baseMaterial.SetColor(PluginConfig.Grunge._MainColor.Definition.Key, PluginConfig.Grunge._MainColor.Value);
-            paintingGroup.baseMaterial.SetColor(PluginConfig.Grunge._CracksColor.Definition.Key, PluginConfig.Grunge._CracksColor.Value);
-            paintingGroup.baseMaterial.SetColor(PluginConfig.Grunge._OutlineColor.Definition.Key, PluginConfig.Grunge._OutlineColor.Value);
-            paintingGroup.baseMaterial.SetFloat(PluginConfig.Grunge._CracksPower.Definition.Key, PluginConfig.Grunge._CracksPower.Value);
-        }
+        UpdateMaterialParameters();
     }
 
     private void LoadImagesFromAllPlugins()
@@ -266,13 +298,119 @@ public class Plugin : BaseUnityPlugin
                 material.SetTexture("_MainTex", texture);
             }
 
-            InPaintingGroup.loadedMaterials.Add(material);
-            InPaintingGroup.loadedTextureNames.Add(filename);
+            var customPainting = new CustomPainting();
+            customPainting.material = material;
+            customPainting.textureName = filename;
+
+            InPaintingGroup.customPaintings.Add(customPainting);
 
             Logger.LogInfo($"Created Material for group [{paintingType}] for loaded image : {filename}");
         }
 
+        InPaintingGroup.unusedPaintings.Clear();
+        InPaintingGroup.unusedPaintings.AddRange(InPaintingGroup.customPaintings);
+
         Logger.LogInfo($"Total Images for group [{paintingType}] : [{imageFiles.Count}]");
+    }
+
+
+    static int HashRoundedPosition(Vector3 position)
+    {
+        unchecked // Allows overflow to wrap around
+        {
+            int hash = 17;
+            hash = hash * 23 + ((int)(position.x*10)).GetHashCode();
+            hash = hash * 23 + ((int)(position.y*10)).GetHashCode();
+            hash = hash * 23 + ((int)(position.z*10)).GetHashCode();
+            return hash;
+        }
+    }
+
+    static void PseudorandomSortList(List<ReplaceablePainting> InList)
+    {
+        Logger.LogDebug($"Randomly sorting painting list");
+
+        if (InList == null)
+        { 
+            
+            return; }
+
+        if (InList.Count <= 0)
+        { return; }
+
+        pseudorandomSeed = 17;
+        unchecked
+        {
+            foreach (var painting in InList)
+            {
+                var meshRenderer = painting.meshRenderer;
+                pseudorandomSeed = pseudorandomSeed * 23 + HashRoundedPosition(meshRenderer.transform.position);
+            }
+        }
+        // TODO: use the pseudorandomSeed to sort the paintings
+
+        // Okay actually reorder the array here
+
+        InList.Sort((a, b) =>
+        {
+            int zComparison = b.meshRenderer.transform.position.z.CompareTo(a.meshRenderer.transform.position.z);
+            if (zComparison != 0)
+            { return zComparison; }
+
+            int xComparison = b.meshRenderer.transform.position.x.CompareTo(a.meshRenderer.transform.position.x);
+            if (xComparison != 0)
+            { return xComparison; }
+
+            return b.meshRenderer.transform.position.y.CompareTo(a.meshRenderer.transform.position.y);
+        });
+    }
+
+    static CustomPainting GetPseudorandomPainting(PaintingGroup InPaintingGroup, MeshRenderer InMeshRenderer, out int OutHash)
+    {
+        OutHash = 0;
+        if (InPaintingGroup == null)
+        {
+            Logger.LogError($"Painting Group is NULL");
+            return null;
+        }
+
+        if (InMeshRenderer == null)
+        {
+            Logger.LogError($"InMeshRenderer is NULL");
+            return null;
+        }
+
+        if (InPaintingGroup.customPaintings == null)
+        {
+            Logger.LogError($"Painting Group custompaintings is NULL");
+            return null;
+        }
+
+        if (InPaintingGroup.unusedPaintings == null)
+        {
+            Logger.LogError($"Painting Group unusedPaintings is NULL");
+            return null;
+        }
+
+        // Refresh list if empty
+        // This will ensure that every painting gets used before one is reused
+        if (InPaintingGroup.unusedPaintings.Count <= 0)
+        {
+            InPaintingGroup.unusedPaintings.AddRange(InPaintingGroup.customPaintings);
+            Logger.LogInfo($"Added all possible custom paintings for [{InPaintingGroup.paintingType}], adding new set of duplicates.");
+        }
+
+        if (InPaintingGroup.unusedPaintings.Count <= 0)
+        { return null; }
+
+        // Get pseudorandom value from GameObject
+        OutHash = Mathf.Abs(HashRoundedPosition(InMeshRenderer.transform.position));
+        Logger.LogDebug($"Hash = [{OutHash}], Count = [{InPaintingGroup.unusedPaintings.Count}], totalCount = [{InPaintingGroup.customPaintings.Count}]");
+        var index = OutHash % InPaintingGroup.unusedPaintings.Count;
+        Logger.LogDebug($"index = [{index}]");
+        var painting = InPaintingGroup.unusedPaintings[index];
+        InPaintingGroup.unusedPaintings.RemoveAt(index);
+        return painting;
     }
 
     private Texture2D LoadTextureFromFile(string filePath)
@@ -290,73 +428,198 @@ public class Plugin : BaseUnityPlugin
         return texture;
     }
 
-    private static void ReplaceWithCustomImages(List<GameObject> InGameObjects)
+    private static void ReplaceMaterials()
+    {
+        PseudorandomSortList(replaceablePaintings);
+
+        Logger.LogDebug("Replacing base images with plugin images");
+
+        foreach (var replaceablePainting in replaceablePaintings)
         {
-        foreach (var gameObject in InGameObjects)
+            var meshRenderer = replaceablePainting.meshRenderer;
+            //foreach (var meshRenderer in gameObject.GetComponentsInChildren<MeshRenderer>())
             {
-                //DebugLog($"Checking game object [{gameObject.name}]");
+                var sharedMaterials = meshRenderer.sharedMaterials;
 
-                foreach (var meshRenderer in gameObject.GetComponentsInChildren<MeshRenderer>())
+                if (sharedMaterials == null)
                 {
-                    var sharedMaterials = meshRenderer.sharedMaterials;
+                    continue;
+                }
 
-                    if (sharedMaterials == null)
+                for (int i = 0; i < sharedMaterials.Length; i++)
+                {
+                    foreach (var paintingGroup in paintingGroups)
                     {
-                        continue;
-                    }
+                        var material = sharedMaterials[i];
+                        if (material == null)
+                        { continue; }
 
-                    for (int i = 0; i < sharedMaterials.Length; i++)
-                    {
-                        foreach (var paintingGroup in paintingGroups)
+                        if (!paintingGroup.whitelistMaterials.Contains(material.name))
                         {
-                            var material = sharedMaterials[i];
-                            if (material == null)
-                            { continue; }
+                            //DebugLog($"[{material.name}] does not contain whitelist match for [{paintingGroup.paintingType}].");
+                            continue;
+                        }
+                        //DebugLog($"[{material.name}] does contain whitelist match for [{paintingGroup.paintingType}].");
 
-                            if (!paintingGroup.whitelistMaterials.Contains(material.name))
-                            {
-                                //DebugLog($"[{material.name}] does not contain whitelist match for [{paintingGroup.paintingType}].");
-                                continue;
-                            }
-                            //DebugLog($"[{material.name}] does contain whitelist match for [{paintingGroup.paintingType}].");
+                        if (paintingGroup.customPaintings.Count <= 0)
+                        { continue; }
 
-                            if (paintingGroup.loadedMaterials.Count <= 0)
-                            { continue; }
+                        var selectedPainting = GetPseudorandomPainting(paintingGroup, meshRenderer, out int hash);
 
-                            float rand = UnityEngine.Random.Range(0.0f, 1.0f);
-                        float paintingChance = PluginConfig.customPaintingChance.Value;
-                            if (rand > PluginConfig.customPaintingChance.Value)
-                            {
-                            Logger.LogInfo($"[{material.name}] will not be replaced by a [{paintingGroup.paintingType}]. Random Probability - [{rand}/{paintingChance}]");
-                                continue;
-                            }
-                            //DebugLog($"[{material.name}] will be replaced by a [{paintingGroup.paintingType}].");
-
-
-                            var randomPaintingIndex = UnityEngine.Random.Range(0, paintingGroup.loadedMaterials.Count);
-                            sharedMaterials[i] = paintingGroup.loadedMaterials[randomPaintingIndex];
-
-                            Logger.LogInfo($"Found ------------> [{material.name}] with texture [{material.mainTexture.name}]");
-                            Logger.LogInfo($"Converted to -----> [{paintingGroup.loadedTextureNames[randomPaintingIndex]}]");
+                        if (selectedPainting == null)
+                        {
+                            Logger.LogError($"Could not get painting from [{paintingGroup}][{meshRenderer}]");
+                            continue; 
                         }
 
-                        meshRenderer.sharedMaterials = sharedMaterials;
+                        var rng = new System.Random(hash);
+                        float rand = (float)rng.NextDouble();
+                        float paintingChance = PluginConfig.customPaintingChance.Value;
+                        if (rand > PluginConfig.customPaintingChance.Value)
+                        {
+                            Logger.LogInfo($"[{material.name}] will not be replaced by a [{paintingGroup.paintingType}]. Random Probability - [{rand}/{paintingChance}]");
+                            continue;
+                        }
+                        //DebugLog($"[{material.name}] will be replaced by a [{paintingGroup.paintingType}].");
+
+                        sharedMaterials[i] = selectedPainting.material;
+
+                        Logger.LogInfo ($"Found ------------> [{material.name}] with texture [{material.mainTexture.name}]");
+                        Logger.LogInfo ($"Converted to -----> [{selectedPainting.textureName}]");
+                        var position = meshRenderer.transform.position;
+                        var positionDebug = 
+                            position.x.ToString("F1").PadLeft(7) + "," + 
+                            position.y.ToString("F1").PadLeft(7) + "," +
+                            position.z.ToString("F1").PadLeft(7);
+                        Logger.LogDebug($"Located at -> [{positionDebug}]");
                     }
                 }
+
+                meshRenderer.sharedMaterials = sharedMaterials;
             }
         }
+    }
 
-    // Some valuables spawned in might be paintings
-    [HarmonyPatch(typeof(ValuableObject), "Start")]
-    public class PatchValuableObjectInstantiate
+    private static void GetReplacableMaterials(List<GameObject> InGameObjects)
     {
-        [HarmonyPostfix]
-        static void ReplaceWithCustomImages(ValuableObject __instance)
-        {
-            DebugLog($"Valuable spawned, checking for paintings: [{__instance.gameObject.name}]");
+        Logger.LogInfo("Finding replaceable paintings");
+        replaceablePaintings.Clear();
 
-            var gameObjects = new List<GameObject>{ __instance.gameObject };
-            Plugin.ReplaceWithCustomImages(gameObjects);
+        foreach (var paintingGroup in paintingGroups)
+        {
+            paintingGroup.unusedPaintings.Clear();
+            paintingGroup.unusedPaintings.AddRange(paintingGroup.customPaintings);
+        }
+
+
+        foreach (var gameObject in InGameObjects)
+        {
+            //DebugLog($"Checking game object [{gameObject.name}]");
+
+            foreach (var meshRenderer in gameObject.GetComponentsInChildren<MeshRenderer>())
+            {
+                bool foundMatch = false;
+                ReplaceablePainting replaceablePainting = null;
+                var sharedMaterials = meshRenderer.sharedMaterials;
+
+                if (sharedMaterials == null)
+                {
+                    continue;
+                }
+
+                for (int i = 0; i < sharedMaterials.Length; i++)
+                {
+                    foreach (var paintingGroup in paintingGroups)
+                    {
+                        var material = sharedMaterials[i];
+                        if (material == null)
+                        { continue; }
+
+                        if (!paintingGroup.whitelistMaterials.Contains(material.name))
+                        {
+                            //DebugLog($"[{material.name}] does not contain whitelist match for [{paintingGroup.paintingType}].");
+                            continue;
+                        }
+                        //DebugLog($"[{material.name}] does contain whitelist match for [{paintingGroup.paintingType}].");
+
+                        if (paintingGroup.customPaintings.Count <= 0)
+                        { continue; }
+
+                        foundMatch = true;
+                        replaceablePainting = new ReplaceablePainting { meshRenderer = meshRenderer };
+                        
+                    }
+                }
+
+                if (!foundMatch)
+                { continue; }
+
+                if (replaceablePainting == null)
+                {
+                    Logger.LogError($"Replaceable painting is null, this shouldn't be possible!");
+                    continue;
+                }
+
+                replaceablePaintings.Add(replaceablePainting);
+            }
+        }
+    }
+
+    private static void ReplaceWithCustomImages(List<GameObject> InGameObjects)
+    {
+        foreach (var gameObject in InGameObjects)
+        {
+            //DebugLog($"Checking game object [{gameObject.name}]");
+
+            foreach (var meshRenderer in gameObject.GetComponentsInChildren<MeshRenderer>())
+            {
+                var sharedMaterials = meshRenderer.sharedMaterials;
+
+                if (sharedMaterials == null)
+                {
+                    continue;
+                }
+
+                for (int i = 0; i < sharedMaterials.Length; i++)
+                {
+                    foreach (var paintingGroup in paintingGroups)
+                    {
+                        var material = sharedMaterials[i];
+                        if (material == null)
+                        { continue; }
+
+                        if (!paintingGroup.whitelistMaterials.Contains(material.name))
+                        {
+                            //DebugLog($"[{material.name}] does not contain whitelist match for [{paintingGroup.paintingType}].");
+                            continue;
+                        }
+                        //DebugLog($"[{material.name}] does contain whitelist match for [{paintingGroup.paintingType}].");
+
+                        if (paintingGroup.customPaintings.Count <= 0)
+                        { continue; }
+
+                        var selectedPainting = GetPseudorandomPainting(paintingGroup, meshRenderer, out int hash);
+
+                        float rand = UnityEngine.Random.Range(0.0f, 1.0f);
+                        float paintingChance = PluginConfig.customPaintingChance.Value;
+                        if (rand > PluginConfig.customPaintingChance.Value)
+                        {
+                            Logger.LogInfo($"[{material.name}] will not be replaced by a [{paintingGroup.paintingType}]. Random Probability - [{rand}/{paintingChance}]");
+                            continue;
+                        }
+                        //DebugLog($"[{material.name}] will be replaced by a [{paintingGroup.paintingType}].");
+
+                        var randomPaintingIndex = UnityEngine.Random.Range(0, paintingGroup.customPaintings.Count);
+                        //var selectedPainting = paintingGroup.customPaintings[randomPaintingIndex];
+                        sharedMaterials[i] = selectedPainting.material;
+
+                        Logger.LogInfo($"Found ------------> [{material.name}] with texture [{material.mainTexture.name}]");
+                        Logger.LogInfo($"Converted to -----> [{selectedPainting.textureName}]");
+                    }
+                }
+
+                meshRenderer.sharedMaterials = sharedMaterials;
+            }
         }
     }
 
@@ -364,15 +627,24 @@ public class Plugin : BaseUnityPlugin
     public class PatchLoadingUI
     {
         [HarmonyPostfix]
-        private static void ReplaceWithCustomImages()
+        private static void Postfix()
         {
+            // Refresh painting list
+
+
             var activeScene = SceneManager.GetActiveScene();
             // All game objects
             var gameObjectList = activeScene.GetRootGameObjects().ToList();
             DebugLog($"Num of GameObjects: [{gameObjectList.Count}]");
-            Logger.LogInfo("Replacing base images with plugin images");
+            if ( gameObjectList.Count <= 0 )
+            { return; }
 
-            Plugin.ReplaceWithCustomImages(gameObjectList);
+            UpdateMaterialParameters();
+
+            GetReplacableMaterials(gameObjectList);
+
+            ReplaceMaterials();
+            //ReplaceWithCustomImages(gameObjectList);
         }
     }
 
