@@ -381,6 +381,6 @@ public class Plugin : BaseUnityPlugin
         if (!PluginConfig.enableDebugLog.Value)
         { return; }
 
-        Logger.LogInfo(InMessage);
+        Logger.LogDebug(InMessage);
     }
 }
