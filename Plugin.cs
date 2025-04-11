@@ -290,23 +290,9 @@ public class Plugin : BaseUnityPlugin
         return texture;
     }
 
-    [HarmonyPatch(typeof(LoadingUI), "LevelAnimationComplete")]
-    public class PatchLoadingUI
-    {
-        [HarmonyPostfix]
-        /**
-         * Replacing base images with plugin images
-         */
-        private static void Postfix()
+    private static void ReplaceWithCustomImages(List<GameObject> InGameObjects)
         {
-            Logger.LogInfo("Replacing base images with plugin images");
-
-            var activeScene = SceneManager.GetActiveScene();
-            // All game objects
-            var gameObjectList = activeScene.GetRootGameObjects().ToList();
-            DebugLog($"gameObjectList Size: [{gameObjectList.Count}]");
-
-            foreach (var gameObject in gameObjectList)
+        foreach (var gameObject in InGameObjects)
             {
                 //DebugLog($"Checking game object [{gameObject.name}]");
 
@@ -338,9 +324,10 @@ public class Plugin : BaseUnityPlugin
                             { continue; }
 
                             float rand = UnityEngine.Random.Range(0.0f, 1.0f);
+                        float paintingChance = PluginConfig.customPaintingChance.Value;
                             if (rand > PluginConfig.customPaintingChance.Value)
                             {
-                                Logger.LogInfo($"[{material.name}] will not be replaced by a [{paintingGroup.paintingType}]. Random Probability - [{rand}]");
+                            Logger.LogInfo($"[{material.name}] will not be replaced by a [{paintingGroup.paintingType}]. Random Probability - [{rand}/{paintingChance}]");
                                 continue;
                             }
                             //DebugLog($"[{material.name}] will be replaced by a [{paintingGroup.paintingType}].");
@@ -357,6 +344,35 @@ public class Plugin : BaseUnityPlugin
                     }
                 }
             }
+        }
+
+    // Some valuables spawned in might be paintings
+    [HarmonyPatch(typeof(ValuableObject), "Start")]
+    public class PatchValuableObjectInstantiate
+    {
+        [HarmonyPostfix]
+        static void ReplaceWithCustomImages(ValuableObject __instance)
+        {
+            DebugLog($"Valuable spawned, checking for paintings: [{__instance.gameObject.name}]");
+
+            var gameObjects = new List<GameObject>{ __instance.gameObject };
+            Plugin.ReplaceWithCustomImages(gameObjects);
+        }
+    }
+
+    [HarmonyPatch(typeof(LoadingUI), "LevelAnimationComplete")]
+    public class PatchLoadingUI
+    {
+        [HarmonyPostfix]
+        private static void ReplaceWithCustomImages()
+        {
+            var activeScene = SceneManager.GetActiveScene();
+            // All game objects
+            var gameObjectList = activeScene.GetRootGameObjects().ToList();
+            DebugLog($"Num of GameObjects: [{gameObjectList.Count}]");
+            Logger.LogInfo("Replacing base images with plugin images");
+
+            Plugin.ReplaceWithCustomImages(gameObjectList);
         }
     }
 
