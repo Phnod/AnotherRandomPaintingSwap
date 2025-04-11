@@ -36,6 +36,7 @@ public class Plugin : BaseUnityPlugin
         "Painting_H_Landscape",
         "Painting_H_crow",
         "Painting_H_crow_0",
+        "PaintingMedium",
     };
 
     // Todo: filter all that begin with Painting_S_ as squares and so on?
@@ -44,8 +45,8 @@ public class Plugin : BaseUnityPlugin
     public static readonly HashSet<string> whitelistSquareMaterials = new HashSet<string>
     {
         "Painting_S_Creep",
-        //"Painting_S_Creep 2_0", // These paintings are stretched a little bit, about 1.1x taller than wide
-        //"Painting_S_Creep 2",
+        "Painting_S_Creep 2_0", // These paintings are stretched a little bit, about 1.1x taller than wide
+        "Painting_S_Creep 2",
         "Painting Wizard Class",
     };
 
@@ -94,7 +95,7 @@ public class Plugin : BaseUnityPlugin
         {
             new PaintingGroup("Landscape", IMAGE_LANDSCAPE_FOLDER_NAME, whitelistLandscapeMaterials),
             new PaintingGroup("Square"   , IMAGE_SQUARE_FOLDER_NAME   , whitelistSquareMaterials),
-            new PaintingGroup("Portrait" , IMAGE_PORTRAIT_FOLDER_NAME , whitelistPortraitMaterials)
+            new PaintingGroup("Portrait" , IMAGE_PORTRAIT_FOLDER_NAME , whitelistPortraitMaterials),
         };
     }
 
