@@ -563,6 +563,7 @@ public class Plugin : BaseUnityPlugin
         }
     }
 
+    // Outdated, kept for reference
     private static void ReplaceWithCustomImages(List<GameObject> InGameObjects)
     {
         foreach (var gameObject in InGameObjects)
@@ -642,7 +643,6 @@ public class Plugin : BaseUnityPlugin
             GetReplacableMaterials(gameObjectList);
 
             ReplaceMaterials();
-            //ReplaceWithCustomImages(gameObjectList);
         }
     }
 

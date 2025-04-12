@@ -53,7 +53,7 @@ internal static class PluginConfig
         (
             "Grunge",
             "_GrungeBaseColor",
-            new Color(0,0,0,1),
+            new Color(0, 0, 0, 1),
             "The base color of the grunge"
         );
 
@@ -69,7 +69,7 @@ internal static class PluginConfig
         (
             "Grunge",
             "_GrungeCracksColor",
-            new Color(0, 0, 0, 1),
+            new Color(0x40, 0x40, 0x40, 1),
             "The color of the cracks in the grunge"
         );
 
