@@ -403,11 +403,9 @@ public class Plugin : BaseUnityPlugin
         if (InPaintingGroup.unusedPaintings.Count <= 0)
         { return null; }
 
-        // Get pseudorandom value from GameObject
+        // Get pseudorandom value from the position of the mesh
         OutHash = Mathf.Abs(HashRoundedPosition(InMeshRenderer.transform.position));
-        Logger.LogDebug($"Hash = [{OutHash}], Count = [{InPaintingGroup.unusedPaintings.Count}], totalCount = [{InPaintingGroup.customPaintings.Count}]");
         var index = OutHash % InPaintingGroup.unusedPaintings.Count;
-        Logger.LogDebug($"index = [{index}]");
         var painting = InPaintingGroup.unusedPaintings[index];
         InPaintingGroup.unusedPaintings.RemoveAt(index);
         return painting;
